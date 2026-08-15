@@ -1,14 +1,61 @@
 version: "3.7"
 
 services:
-
-  app_proxy:
-    environment:
-      # The format here is: <app-id>_<docker-service-name>_1
-      APP_HOST: sparkles-hello-world_server_1
-      APP_PORT: 3000
-    
   server:
-    image: getumbrel/community-app-store-hello-world:latest
-    user: "1000:1000"
-    init: true
+    image: alpine:3.22
+    network_mode: host
+    restart: on-failure
+
+    cap_add:
+      - NET_ADMIN
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache iproute2 >/dev/null
+
+        mkdir -p /www
+        cat > /www/index.html <<'EOF'
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>IPvlan Host Shim</title>
+          </head>
+          <body>
+            <h1>IPvlan Host Shim</h1>
+            <p>Servicio activo.</p>
+            <p>Umbrel: 192.168.0.253 → Nginx Proxy Manager: 192.168.0.254</p>
+          </body>
+        </html>
+        EOF
+
+        httpd -p 8129 -h /www
+
+        cleanup() {
+          ip route del 192.168.0.254/32 dev ipvlan-host 2>/dev/null || true
+          ip link del ipvlan-host 2>/dev/null || true
+          exit 0
+        }
+
+        trap cleanup TERM INT
+
+        while true; do
+          if ! ip link show ipvlan-host >/dev/null 2>&1; then
+            ip link add ipvlan-host link wlp2s0 type ipvlan mode l2 bridge
+          fi
+
+          if ! ip addr show ipvlan-host | grep -q "192.168.0.253/32"; then
+            ip addr add 192.168.0.253/32 dev ipvlan-host
+          fi
+
+          ip link set ipvlan-host up
+
+          ip route replace \
+            192.168.0.254/32 \
+            dev ipvlan-host \
+            src 192.168.0.253
+
+          sleep 30
+        done
