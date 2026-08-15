@@ -4,7 +4,7 @@ id: personal-ipvlan-shim
 category: networking
 
 name: IPvlan Host Shim
-version: "1.0.0"
+version: "1.0.1"
 
 tagline: Mantiene el acceso de Umbrel al reverse proxy IPvlan
 
